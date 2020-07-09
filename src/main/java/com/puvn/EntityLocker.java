@@ -21,18 +21,19 @@ public interface EntityLocker<I, V> {
      *
      * @param entityId entityId to be locked
      * @param callable protected code that should have exclusive access to the entity
+     * @return result of protected code's execution
      */
-    void doWithEntity(I entityId, Callable<V> callable) throws Exception;
+    V doWithEntity(I entityId, Callable<V> callable) throws Exception;
 
     /**
      * Same as {@link EntityLocker#doWithEntity(I, java.util.concurrent.Callable)} but with
      * possibility to specify timeout for locking entities.
      *
-     * @param entityId entityId to be locked
+     * @param entityId entityId to be locked for write
      * @param timeout  timeout
      * @param unit     timeout unit
+     * @return result of protected code's execution or null if it could not to acquire a lock successfully.
      */
-    boolean tryToDoWithEntityInTime(I entityId, Callable<V> callable, long timeout, TimeUnit unit)
-            throws Exception;
+    V tryToLockInTimeAndDoWithEntity(I entityId, Callable<V> callable, long timeout, TimeUnit unit) throws Exception;
 
 }
