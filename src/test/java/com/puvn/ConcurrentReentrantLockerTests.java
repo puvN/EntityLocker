@@ -39,38 +39,6 @@ public class ConcurrentReentrantLockerTests {
 
     private EntityLocker entityLocker;
 
-    private static final class Entity<K, V> {
-        private final K key;
-        private V value;
-
-        public Entity(K key, V value) {
-            this.key = key;
-            this.value = value;
-        }
-
-        public synchronized V getValue() {
-            return value;
-        }
-
-        public synchronized void setValue(V value) {
-            this.value = value;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            Entity<?, ?> entity = (Entity<?, ?>) o;
-            return key.equals(entity.key) &&
-                    Objects.equals(value, entity.value);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(key, value);
-        }
-    }
-
     @BeforeEach
     public void createEntityLocker() {
         entityLocker = new ConcurrentReentrantLocker();
@@ -249,7 +217,7 @@ public class ConcurrentReentrantLockerTests {
     }
 
     /**
-     * Testing that {@link EntityLocker#tryToLockInTimeAndDoWithEntity(Object, Callable, long, TimeUnit)} could not
+     * Testing that {@link EntityLocker#tryToLockInTimeAndDoWithEntity(Object, Callable, long)} could not
      * get lock in time and returned null.
      *
      * @throws Exception exception
@@ -267,12 +235,13 @@ public class ConcurrentReentrantLockerTests {
         }).start();
         Thread.sleep(ODDS_TIME); //avoid race condition
         Object result = entityLocker.tryToLockInTimeAndDoWithEntity(testEntity.key,
-                getIncrementalIntegerBusinessTask(testEntity, 100), 500L, TimeUnit.MILLISECONDS);
+                getIncrementalIntegerBusinessTask(testEntity, 100),
+                TimeUnit.NANOSECONDS.convert(500L, TimeUnit.MILLISECONDS));
         assertNull(result);
     }
 
     /**
-     * Testing that {@link EntityLocker#tryToLockInTimeAndDoWithEntity(Object, Callable, long, TimeUnit)}
+     * Testing that {@link EntityLocker#tryToLockInTimeAndDoWithEntity(Object, Callable, long)}
      * successfully acquired lock and dit his job. (like as a second thread)
      *
      * @throws Exception exception
@@ -291,9 +260,46 @@ public class ConcurrentReentrantLockerTests {
         });
         thread.start();
         entityLocker.tryToLockInTimeAndDoWithEntity(testEntity.key,
-                getIncrementalIntegerBusinessTask(testEntity, 100), 500L, TimeUnit.MILLISECONDS);
+                getIncrementalIntegerBusinessTask(testEntity, 100),
+                TimeUnit.NANOSECONDS.convert(500L, TimeUnit.MILLISECONDS));
         thread.join();
         assertEquals(300, testEntity.getValue());
+    }
+
+    /**
+     * Checking that long global lock blocks not-global locks.
+     *
+     * @throws InterruptedException exception
+     */
+    @Test
+    public void testGlobalLockLocksOtherThreads() throws InterruptedException {
+        var testEntity = new Entity<>("alice", 100);
+
+        executorService = Executors.newFixedThreadPool(10);
+        List<Callable<Void>> tasks = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            tasks.add(() -> {
+                entityLocker.tryToLockInTimeAndDoWithEntity(testEntity.key,
+                        getIncrementalIntegerBusinessTask(testEntity, 100),
+                        TimeUnit.NANOSECONDS.convert(500L, TimeUnit.MILLISECONDS));
+                return null;
+            });
+        }
+
+        var thread = new Thread(() -> {
+            try {
+                entityLocker.doWithGlobalLock(() -> {
+                    Thread.sleep(3000);
+                    return null;
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        thread.start();
+        Thread.sleep(ODDS_TIME);
+        executorService.invokeAll(tasks);
+        assertEquals(100, testEntity.getValue());
     }
 
     /**
@@ -322,6 +328,38 @@ public class ConcurrentReentrantLockerTests {
             entity.value = value;
             return null;
         };
+    }
+
+    private static final class Entity<K, V> {
+        private final K key;
+        private V value;
+
+        public Entity(K key, V value) {
+            this.key = key;
+            this.value = value;
+        }
+
+        public synchronized V getValue() {
+            return value;
+        }
+
+        public synchronized void setValue(V value) {
+            this.value = value;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Entity<?, ?> entity = (Entity<?, ?>) o;
+            return key.equals(entity.key) &&
+                    Objects.equals(value, entity.value);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(key, value);
+        }
     }
 
 }

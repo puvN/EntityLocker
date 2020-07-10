@@ -1,7 +1,6 @@
 package com.puvn;
 
 import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
 
 /**
  * The task is to create a reusable utility class that provides synchronization
@@ -30,10 +29,19 @@ public interface EntityLocker<I, V> {
      * possibility to specify timeout for locking entities.
      *
      * @param entityId entityId to be locked for write
-     * @param timeout  timeout
-     * @param unit     timeout unit
+     * @param nanoseconds  timeout in nanoseconds
      * @return result of protected code's execution or null if it could not to acquire a lock successfully.
      */
-    V tryToLockInTimeAndDoWithEntity(I entityId, Callable<V> callable, long timeout, TimeUnit unit) throws Exception;
+    V tryToLockInTimeAndDoWithEntity(I entityId, Callable<V> callable, long nanoseconds) throws Exception;
+
+    /**
+     * Executes protected code on global lock. Protected code that executes under a global lock
+     * must not execute concurrently with any other protected code.
+     *
+     * @param callable protected code
+     * @return result of protected code execution
+     * @throws Exception exception
+     */
+    V doWithGlobalLock(Callable<V> callable) throws Exception;
 
 }
